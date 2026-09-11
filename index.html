@@ -1,25 +1,626 @@
-
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Roman Empire</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#f4f4f0">
+<title>Roman Empire — ZX81 Port</title>
 <style>
-body{font-family:monospace;background:#f4f4f0;color:#111;padding:24px}
-button{font:inherit;padding:14px;margin:8px 0;width:100%;background:#fff;border:2px solid #111}
-.box{border:2px solid #111;padding:18px;max-width:500px;margin:auto}
-h1{text-align:center}
+:root{--bg:#f4f4f0;--fg:#111;--muted:#666;--panel:#fff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Courier New",monospace}
+#app{max-width:760px;margin:auto;min-height:100vh;padding:calc(18px + env(safe-area-inset-top)) 16px calc(30px + env(safe-area-inset-bottom))}
+h1,h2,h3{font-weight:700;letter-spacing:.03em}
+h1{font-size:1.55rem;text-align:center;margin:12px 0 6px}
+.sub{text-align:center;color:var(--muted);margin-bottom:24px}
+.panel{background:var(--panel);border:2px solid var(--fg);padding:16px;margin:12px 0}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+button,select{font:inherit;font-size:16px;border:2px solid var(--fg);background:#fff;color:#111;padding:12px;min-height:48px;border-radius:0}
+button:active{background:#111;color:#fff}
+.wide{width:100%;margin:6px 0}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:6px 3px;border-bottom:1px solid #ccc;text-align:right}
+th:first-child,td:first-child{text-align:left}
+.statline{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #ccc;padding:7px 0}
+.msg{white-space:pre-wrap;line-height:1.35}
+.tiny{font-size:12px;color:var(--muted)}
+.big{font-size:1.15rem;font-weight:bold}
+@media(max-width:520px){.grid{grid-template-columns:1fr}table{font-size:11px}}
 </style>
 </head>
 <body>
-<div class="box">
-<h1>ROMAN EMPIRE</h1>
-<p>M.C. Lothlorien · ZX81 · phone port test</p>
-<p id="msg">If you can read this, the web app is working.</p>
-<button onclick="document.getElementById('msg').textContent='HAIL CAESAR — JAVASCRIPT WORKS TOO.'">
-TEST BUTTON
-</button>
-</div>
+<main id="app"></main>
+<script>
+const countries=["AEGYPTUS","AS.MINOR","DACIA","GALLIA","GERMANIA","GRAECIA","HISPANIA","ILLYRIA","ITALIA","NUMIDIA"];
+const ratings=[3,3,5,2,3,3,2,4,5,4];
+const generalNames=["YOURSELF","ALBINUS","BRUTUS","CASSIUS","DECIUS","ERMINIUS","FLAVIUS","GRACCHUS","HORATIUS"];
+const generalAbility=[6,5,4,4,3,3,2,2,1];
+let s=null;
+const R=n=>Math.floor(Math.random()*n);
+
+function fresh(level){
+ return {
+  level,period:0,victories:0,defeats:0,gameover:false,
+  enemy:countries.map((name,i)=>({
+   name,rating:ratings[i],leader:R(5)+level,morale:R(8)+level,
+   troops:R(9000)+7000+2000*level,energy:10,status:0
+  })),
+  legions:Array.from({length:18},(_,i)=>({
+   id:i+1,men:5000,rating:6,morale:10,energy:10,army:0
+  })),
+  generals:generalNames.map((name,i)=>({
+   id:i+1,name,ability:generalAbility[i],army:0
+  })),
+  armies:Array.from({length:9},(_,i)=>({
+   id:i+1,troops:0,morale:0,energy:0,rating:6,general:0,country:0
+  }))
+ }
+}
+
+function app(x){document.getElementById("app").innerHTML=x}
+
+function start(){
+ app(`
+ <h1>ROMAN EMPIRE</h1>
+ <div class="sub">M.C. LOTHLORIEN · 1982<br>ZX81 phone port</div>
+ <div class="panel">
+  <div class="big">ENTER LEVEL REQUIRED</div>
+  <p>Choose 1, 2 or 3.</p>
+  <div class="grid">
+   <button onclick="newGame(1)">1</button>
+   <button onclick="newGame(2)">2</button>
+   <button onclick="newGame(3)">3</button>
+  </div>
+ </div>
+ <p class="tiny">Touch controls replace ZX81 keyboard input.</p>
+ `)
+}
+
+function newGame(l){s=fresh(l);menu()}
+
+function menu(){
+ if(s.gameover)return;
+ app(`
+ <h1>ROMAN EMPIRE</h1>
+ <div class="panel">
+  <div class="statline">
+   <b>PERIOD ${s.period}</b>
+   <span>VICTORIES ${s.victories} · DEFEATS ${s.defeats}</span>
+  </div>
+  <div class="grid" style="margin-top:12px">
+   <button onclick="showCountries()">1. CHECK COUNTRIES</button>
+   <button onclick="showLegions()">2. CHECK LEGIONS</button>
+   <button onclick="showGenerals()">3. CHECK GENERALS</button>
+   <button onclick="chooseArmy()">4. BUILD/CHANGE AN ARMY</button>
+   <button onclick="attack()">5. MAKE AN ATTACK</button>
+   <button onclick="withdraw()">6. MAKE A WITHDRAWAL</button>
+   <button onclick="campaign()">7. CHECK A CAMPAIGN</button>
+   <button onclick="fightPeriod()">8. FIGHT A FURTHER PERIOD</button>
+  </div>
+ </div>
+ `)
+}
+
+const back=()=>`<button class="wide" onclick="menu()">RETURN</button>`;
+
+function showCountries(){
+ let rows=s.enemy.map((e,i)=>`
+ <tr>
+  <td>${i+1}. ${e.name}</td>
+  <td>${e.troops}</td>
+  <td>${e.leader}</td>
+  <td>${e.rating}</td>
+  <td>${e.morale}</td>
+  <td>${e.energy}</td>
+  <td>${e.status===99?"CONQ":e.status||"-"}</td>
+ </tr>`).join("");
+
+ app(`
+ <h2>COUNTRIES</h2>
+ <div class="panel">
+  <table>
+   <tr><th>Country</th><th>Troops</th><th>LA</th><th>R</th><th>M</th><th>E</th><th>S</th></tr>
+   ${rows}
+  </table>
+ </div>
+ ${back()}
+ `)
+}
+
+function showLegions(){
+ let rows=s.legions.map(l=>`
+ <tr>
+  <td>${l.id}</td>
+  <td>${l.men}</td>
+  <td>${l.rating}</td>
+  <td>${l.morale}</td>
+  <td>${l.energy}</td>
+  <td>${l.army>0?l.army:"-"}</td>
+ </tr>`).join("");
+
+ app(`
+ <h2>LEGIONS</h2>
+ <div class="panel">
+  <table>
+   <tr><th>Legion</th><th>Men</th><th>R</th><th>M</th><th>E</th><th>S</th></tr>
+   ${rows}
+  </table>
+ </div>
+ ${back()}
+ `)
+}
+
+function showGenerals(){
+ let rows=s.generals.map(g=>`
+ <tr>
+  <td>${g.id}. ${g.name}</td>
+  <td>${g.ability}</td>
+  <td>${g.army||"-"}</td>
+ </tr>`).join("");
+
+ app(`
+ <h2>GENERALS</h2>
+ <div class="panel">
+  <table>
+   <tr><th>General</th><th>Ability</th><th>Status</th></tr>
+   ${rows}
+  </table>
+ </div>
+ ${back()}
+ `)
+}
+
+function chooseArmy(){
+ app(`
+ <h2>BUILD/CHANGE AN ARMY</h2>
+ <div class="panel">
+  <p>WHICH ARMY (1–9)?</p>
+  <div class="grid">
+   ${s.armies.map(a=>`<button onclick="army(${a.id})">ARMY ${a.id}</button>`).join("")}
+  </div>
+ </div>
+ ${back()}
+ `)
+}
+
+function army(id){
+ let a=s.armies[id-1];
+ let g=a.general?s.generals[a.general-1].name:"NONE";
+ let avail=s.legions.filter(l=>l.army===0);
+ let attached=s.legions.filter(l=>l.army===id);
+
+ app(`
+ <h2>ARMY ${id}</h2>
+
+ <div class="panel">
+  <div class="statline"><span>TROOPS</span><b>${a.troops}</b></div>
+  <div class="statline"><span>MORALE</span><b>${a.morale}</b></div>
+  <div class="statline"><span>ENERGY</span><b>${a.energy}</b></div>
+  <div class="statline"><span>RATING</span><b>6</b></div>
+  <div class="statline"><span>GENERAL</span><b>${g}</b></div>
+  <div class="statline"><span>STATUS</span><b>${a.country?countries[a.country-1]:"UNCOMMITTED"}</b></div>
+ </div>
+
+ <div class="panel">
+  <h3>LEGIONS</h3>
+  ${
+   avail.length
+   ? `<select id="addL">
+       <option value="">Add a legion…</option>
+       ${avail.map(l=>`<option value="${l.id}">${l.id} (${l.men} men)</option>`).join("")}
+      </select>
+      <button onclick="addLegion(${id})">ADD</button>`
+   : "<p>No free legions.</p>"
+  }
+
+  ${
+   attached.length
+   ? `<select id="remL">
+       <option value="">Remove a legion…</option>
+       ${attached.map(l=>`<option value="${l.id}">${l.id}</option>`).join("")}
+      </select>
+      <button onclick="removeLegion(${id})">REMOVE</button>`
+   : ""
+  }
+ </div>
+
+ <div class="panel">
+  <h3>GENERAL</h3>
+  ${
+   a.general
+   ? `<p>${g}</p><button onclick="removeGeneral(${id})">REMOVE GENERAL</button>`
+   : `<select id="gen">
+       <option value="">Appoint…</option>
+       ${s.generals.filter(g=>!g.army).map(g=>`<option value="${g.id}">${g.id}. ${g.name} (${g.ability})</option>`).join("")}
+      </select>
+      <button onclick="appoint(${id})">APPOINT</button>`
+  }
+ </div>
+
+ <button class="wide" onclick="menu()">DONE</button>
+ `)
+}
+
+function syncCampaign(a){
+ if(!a.country)return;
+ let e=s.enemy[a.country-1];
+ e.romanTroops=a.troops;
+ e.romanMorale=a.morale;
+ e.romanEnergy=a.energy;
+ e.romanLeader=a.general?s.generals[a.general-1].ability:0;
+}
+
+function addLegion(id){
+ let lid=+document.getElementById("addL").value;
+ if(!lid)return;
+
+ let a=s.armies[id-1];
+ let l=s.legions[lid-1];
+ let old=a.troops;
+
+ a.morale=Math.floor((a.morale*old+l.men*l.morale)/(old+l.men));
+ a.energy=Math.floor(((a.energy*old+l.men*l.energy)/(old+l.men))+.5);
+ a.troops+=l.men;
+
+ l.army=id;
+ l.morale=a.morale;
+ l.energy=a.energy;
+
+ syncCampaign(a);
+ army(id);
+}
+
+function removeLegion(id){
+ let lid=+document.getElementById("remL").value;
+ if(!lid)return;
+
+ let a=s.armies[id-1];
+ let l=s.legions[lid-1];
+
+ l.army=0;
+ a.troops-=l.men;
+
+ if(a.troops<=0){
+  a.troops=0;
+  a.morale=0;
+  a.energy=0;
+ }
+
+ syncCampaign(a);
+ army(id);
+}
+
+function appoint(id){
+ let gid=+document.getElementById("gen").value;
+ if(!gid)return;
+
+ let a=s.armies[id-1];
+ let g=s.generals[gid-1];
+
+ if(g.army)return;
+
+ a.morale=Math.min(10,a.morale+5);
+ a.general=gid;
+ g.army=id;
+
+ syncCampaign(a);
+ army(id);
+}
+
+function removeGeneral(id){
+ let a=s.armies[id-1];
+ if(!a.general)return;
+
+ let g=s.generals[a.general-1];
+ g.army=0;
+ a.general=0;
+ a.morale=Math.max(0,a.morale-5);
+
+ syncCampaign(a);
+ army(id);
+}
+
+function attack(){
+ let opts=s.enemy.map((e,i)=>
+  e.status===0
+  ? `<option value="${i+1}">${i+1}. ${e.name}</option>`
+  : ""
+ ).join("");
+
+ app(`
+ <h2>MAKE AN ATTACK</h2>
+ <div class="panel">
+  <select id="ctry">
+   <option value="">Country…</option>
+   ${opts}
+  </select>
+
+  <select id="armyAtk">
+   <option value="">Army…</option>
+   ${s.armies
+    .filter(a=>a.troops>0&&a.general&&a.country===0)
+    .map(a=>`<option value="${a.id}">Army ${a.id} (${a.troops} men)</option>`)
+    .join("")}
+  </select>
+
+  <button class="wide" onclick="doAttack()">ATTACK</button>
+ </div>
+ ${back()}
+ `)
+}
+
+function doAttack(){
+ let n=+document.getElementById("ctry").value;
+ let b=+document.getElementById("armyAtk").value;
+ if(!n||!b)return;
+
+ let e=s.enemy[n-1];
+ let a=s.armies[b-1];
+
+ if(e.status!==0||!a.troops||!a.general||a.country)return;
+
+ a.country=n;
+ e.status=b;
+
+ message(`ARMY ${b} IS ATTACKING ${e.name}`);
+}
+
+function withdraw(){
+ let active=s.enemy.map((e,i)=>
+  (e.status>0&&e.status!==99)
+  ? `<option value="${i+1}">${i+1}. ${e.name}</option>`
+  : ""
+ ).join("");
+
+ app(`
+ <h2>WITHDRAWAL</h2>
+ <div class="panel">
+  <select id="wd">
+   <option value="">Country…</option>
+   ${active}
+  </select>
+  <button class="wide" onclick="doWithdraw()">WITHDRAW</button>
+ </div>
+ ${back()}
+ `)
+}
+
+function doWithdraw(){
+ let n=+document.getElementById("wd").value;
+ if(!n)return;
+
+ let e=s.enemy[n-1];
+ if(!(e.status>0&&e.status!==99))return;
+
+ let a=s.armies[e.status-1];
+ a.country=0;
+ e.status=0;
+
+ message(`WITHDRAWAL FROM ${e.name}`);
+}
+
+function campaign(){
+ let opts=s.enemy.map((e,i)=>
+  `<option value="${i+1}">${i+1}. ${e.name}</option>`
+ ).join("");
+
+ app(`
+ <h2>CHECK A CAMPAIGN</h2>
+ <div class="panel">
+  <select id="camp">${opts}</select>
+  <button onclick="showCampaign()">CHECK</button>
+ </div>
+ ${back()}
+ `)
+}
+
+function showCampaign(){
+ let n=+document.getElementById("camp").value;
+ let e=s.enemy[n-1];
+ let b=(e.status>0&&e.status!==99)?e.status:0;
+ let a=b?s.armies[b-1]:null;
+
+ app(`
+ <h2>CAMPAIGN IN ${e.name}</h2>
+ <div class="panel">
+  <table>
+   <tr><th></th><th>ROMAN</th><th>ENEMY</th></tr>
+   <tr><td>Troops</td><td>${a?a.troops:0}</td><td>${e.troops}</td></tr>
+   <tr><td>Morale</td><td>${a?a.morale:0}</td><td>${e.morale}</td></tr>
+   <tr><td>Energy</td><td>${a?a.energy:0}</td><td>${e.energy}</td></tr>
+   <tr><td>Rating</td><td>6</td><td>${e.rating}</td></tr>
+   <tr><td>Leader ability</td><td>${a&&a.general?s.generals[a.general-1].ability:0}</td><td>${e.leader}</td></tr>
+  </table>
+ </div>
+ ${back()}
+ `)
+}
+
+function fightPeriod(){
+ let reports=[];
+
+ s.armies.forEach(a=>{
+  if(!a.country&&a.troops>0)a.energy=Math.min(10,a.energy+1)
+ });
+
+ s.enemy.forEach((e,idx)=>{
+  if(e.status===99)return;
+
+  if(e.status===0){
+   e.troops=Math.floor(e.troops*1.05);
+   e.morale=Math.min(10,e.morale+1);
+   e.energy=Math.min(10,e.energy+1);
+   return;
+  }
+
+  let a=s.armies[e.status-1];
+  let rt=a.troops;
+  let rm=a.morale;
+  let re=a.energy;
+  let rl=a.general?s.generals[a.general-1].ability:0;
+
+  let romanPower=
+   (Math.random()*1.2+.8)*
+   (6+rl+rm)*
+   (Math.max(1,re)/10)*
+   Math.sqrt(Math.max(1,rt));
+
+  let enemyPower=
+   (Math.random()*1.5+.5)*
+   (e.rating+e.leader+e.morale)*
+   (Math.max(1,e.energy)/10)*
+   Math.sqrt(Math.max(1,e.troops));
+
+  let win=romanPower>=enemyPower;
+
+  reports.push(`${e.name}: ${win?"A VICTORY":"A DEFEAT"}`);
+
+  if(win)s.victories++;
+  else s.defeats++;
+
+  let romanLoss=Math.max(
+   100,
+   Math.floor(
+    e.troops*
+    (win?0.06:0.14)*
+    (Math.random()*.7+.65)
+   )
+  );
+
+  let enemyLoss=Math.max(
+   100,
+   Math.floor(
+    rt*
+    (win?0.16:0.08)*
+    (Math.random()*.7+.65)
+   )
+  );
+
+  rt=Math.max(0,rt-romanLoss);
+  e.troops=Math.max(0,e.troops-enemyLoss);
+
+  rm=Math.max(0,Math.min(10,rm+(win?1:-1)));
+  e.morale=Math.max(0,Math.min(10,e.morale+(win?-1:1)));
+
+  re=Math.max(0,re-1);
+  e.energy=Math.max(0,e.energy-1);
+
+  a.troops=rt;
+  a.morale=rm;
+  a.energy=re;
+
+  if(e.troops===0){
+   reports.push(`${e.name}: IS CONQUERED`);
+   e.status=99;
+   e.leader=0;
+   e.morale=0;
+   e.energy=0;
+   e.rating=0;
+   a.country=0;
+  }
+  else if(rt===0){
+   reports.push(`${e.name}: ROMANS WIPED OUT`);
+   a.country=0;
+   e.status=0;
+  }
+ });
+
+ s.armies.forEach(a=>{
+  let ls=s.legions.filter(l=>l.army===a.id);
+
+  if(ls.length){
+   let each=Math.floor(a.troops/ls.length);
+
+   ls.forEach(l=>{
+    l.men=each;
+    l.morale=a.morale;
+    l.energy=a.energy;
+
+    if(each===0){
+     l.army=-1;
+     l.rating=0;
+     l.morale=0;
+     l.energy=0;
+    }
+   });
+  }
+ });
+
+ let men=s.legions.reduce((q,l)=>q+l.men,0);
+ let deployed=s.legions.filter(l=>l.army>0).length;
+ let conq=s.enemy.filter(e=>e.status===99).length;
+
+ s.period++;
+
+ if(men===0)
+  return gameOver("YOUR TROOPS HAVE BEEN ANNIHILATED - GAME OVER");
+
+ if(deployed>=18 && R(6)===3)
+  return gameOver("YOU HAVE LEFT ROME UNDEFENDED AND BARBARIANS HAVE SACKED THE CITY - GAME OVER");
+
+ if(s.generals[0].army && R(6)===5)
+  return gameOver("YOU HAVE BEEN OUSTED BY REBELLION IN ROME - GAME OVER");
+
+ if(conq===10)
+  return gameOver("HAIL CAESAR. YOU HAVE BROUGHT PEACE TO THE EMPIRE. ROME SALUTES YOU.");
+
+ message(
+  (reports.length?reports.join("\n"):"NO ACTIVE CAMPAIGNS")+
+  `\n\nPERIOD ${s.period} COMPLETE`
+ );
+}
+
+function score(){
+ let men=s.legions.reduce((q,l)=>q+l.men,0);
+ let co=s.enemy.filter(e=>e.status===99).length;
+ let total=s.victories+s.defeats;
+
+ let generalship=Math.floor(
+  (
+   (total?s.victories*100/total:0)+
+   (men/900)+
+   (co*10)
+  )/3
+ );
+
+ return {men,co,generalship};
+}
+
+function gameOver(txt){
+ s.gameover=true;
+ let q=score();
+
+ app(`
+ <h1>ROMAN EMPIRE</h1>
+
+ <div class="panel">
+  <div class="big msg">${txt}</div>
+ </div>
+
+ <div class="panel">
+  <h3>RESULTS</h3>
+  <div class="statline"><span>PERIODS</span><b>${s.period}</b></div>
+  <div class="statline"><span>VICTORIES</span><b>${s.victories}</b></div>
+  <div class="statline"><span>DEFEATS</span><b>${s.defeats}</b></div>
+  <div class="statline"><span>CONQUESTS</span><b>${q.co}</b></div>
+  <div class="statline"><span>PC. CASUALTIES</span><b>${Math.floor((90000-q.men)/900)}</b></div>
+  <div class="statline"><span>GENERALSHIP</span><b>${q.generalship}%</b></div>
+ </div>
+
+ <button class="wide" onclick="start()">ANOTHER GAME</button>
+ `)
+}
+
+function message(txt){
+ app(`
+ <h2>ROMAN EMPIRE</h2>
+ <div class="panel msg">${txt}</div>
+ ${back()}
+ `)
+}
+
+start();
+</script>
 </body>
 </html>
